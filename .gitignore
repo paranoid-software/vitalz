@@ -1,0 +1,8 @@
+# compiled binary
+/vitalz
+
+# editor / OS noise
+.idea/
+.vscode/
+.DS_Store
+*.swp
