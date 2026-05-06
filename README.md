@@ -33,9 +33,11 @@ events on the same broker by binding both `host-vitalz` and
 - **Broker**: any RabbitMQ reachable from the host. Configured via env.
 - **Exchange**: topic, must already exist (passive declare). Default
   name `host-vitalz`.
-- **Routing key**: `<hostname>.snapshot`. Single host today; the
-  shape supports multi-host setups subscribing `*.snapshot` for all
-  hosts or `<host>.#` for one.
+- **Routing key**: `snapshot` (single static segment). Host identity
+  is **implicit in the vhost** — the convention is one vhost per host,
+  so a consumer bound to a specific vhost knows which host the
+  snapshots belong to. Filtering between hosts at the routing-key
+  level isn't needed.
 - **Body**: JSON envelope (one per tick). Cumulative-since-boot
   counters where applicable (Prometheus COUNTER convention) — the
   consumer subtracts consecutive snapshots to compute rates.
@@ -45,7 +47,6 @@ events on the same broker by binding both `host-vitalz` and
 ```json
 {
   "timestamp": "2026-05-04T03:52:19.123Z",
-  "host": "minion",
   "uptime_seconds": 6608943,
   "cpu": {
     "load_1": 0.08,
@@ -109,7 +110,6 @@ Go 1.22 or newer.
 | `RABBITMQ_URL` | yes | — | e.g. `amqp://user:pass@host:5672/vhost` |
 | `EXCHANGE` | no | `host-vitalz` | Must already exist on the broker as `topic`, durable. `vitalz` does a passive declare and won't create it. |
 | `INTERVAL_SECONDS` | no | `30` | Tick frequency. |
-| `HOSTNAME_OVERRIDE` | no | `os.Hostname()` | Override the host segment of the routing key (useful for testing or multi-instance setups on one box). |
 
 ## Deploying
 
