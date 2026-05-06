@@ -44,7 +44,6 @@ const (
 
 type envelope struct {
 	Timestamp     string     `json:"timestamp"`
-	Host          string     `json:"host"`
 	UptimeSeconds uint64     `json:"uptime_seconds"`
 	CPU           cpuStats   `json:"cpu"`
 	Memory        memStats   `json:"memory"`
@@ -125,16 +124,11 @@ func main() {
 	exchange := envDefault("EXCHANGE", defaultExchange)
 	intervalSec := envIntDefault("INTERVAL_SECONDS", defaultIntervalSeconds)
 
-	hostname := envDefault("HOSTNAME_OVERRIDE", "")
-	if hostname == "" {
-		hn, err := os.Hostname()
-		if err != nil {
-			log.Fatalf("os.Hostname: %v", err)
-		}
-		hostname = hn
-	}
-	hostSeg := strings.ReplaceAll(hostname, ".", "-")
-	routingKey := hostSeg + ".snapshot"
+	// Host identity is implicit in the vhost — the broker knows which
+	// host this is (one vhost per host by convention). The envelope and
+	// routing key both stay host-less; the consumer derives host from
+	// the vhost it's bound to.
+	const routingKey = "snapshot"
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -162,15 +156,15 @@ func main() {
 	_, _ = cpu.PercentWithContext(ctx, 0, false)
 	_, _ = cpu.PercentWithContext(ctx, 0, true)
 
-	log.Printf("vitalz started: host=%q interval=%ds exchange=%q routing_key=%q",
-		hostname, intervalSec, exchange, routingKey)
+	log.Printf("vitalz started: interval=%ds exchange=%q routing_key=%q",
+		intervalSec, exchange, routingKey)
 
 	tick := time.NewTicker(time.Duration(intervalSec) * time.Second)
 	defer tick.Stop()
 
 	// One immediate sample so the queue starts seeing data right away
 	// instead of waiting `intervalSec` seconds.
-	doSample(ctx, hostname, routingKey, publishCh, &dropped)
+	doSample(ctx, routingKey, publishCh, &dropped)
 
 	for {
 		select {
@@ -179,15 +173,15 @@ func main() {
 			wg.Wait()
 			return
 		case <-tick.C:
-			doSample(ctx, hostname, routingKey, publishCh, &dropped)
+			doSample(ctx, routingKey, publishCh, &dropped)
 		}
 	}
 }
 
 // --- sampling ---
 
-func doSample(ctx context.Context, hostname, routingKey string, publishCh chan<- message, dropped *atomic.Uint64) {
-	env := buildSnapshot(ctx, hostname)
+func doSample(ctx context.Context, routingKey string, publishCh chan<- message, dropped *atomic.Uint64) {
+	env := buildSnapshot(ctx)
 	body, err := json.Marshal(env)
 	if err != nil {
 		log.Printf("marshal snapshot: %v", err)
@@ -200,10 +194,9 @@ func doSample(ctx context.Context, hostname, routingKey string, publishCh chan<-
 	}
 }
 
-func buildSnapshot(ctx context.Context, hostname string) envelope {
+func buildSnapshot(ctx context.Context) envelope {
 	env := envelope{
 		Timestamp: time.Now().UTC().Format(timestampFmt),
-		Host:      hostname,
 	}
 
 	if info, err := host.InfoWithContext(ctx); err == nil {
